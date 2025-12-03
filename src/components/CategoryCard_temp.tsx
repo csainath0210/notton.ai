@@ -8,8 +8,6 @@ interface InProgressTask {
   status: string;
   source: string;
   lastOpened: string;
-  duration?: string;
-  energy?: string;
 }
 
 interface UpNextTask {
@@ -18,7 +16,6 @@ interface UpNextTask {
   duration: string;
   focus: string;
   source: string;
-  energy?: string;
 }
 
 interface Category {
@@ -36,7 +33,6 @@ interface CategoryCardProps {
   energyLevel: string;
   onTaskClick?: (task: any) => void;
   onAddToToday?: (task: any) => void;
-  onOpenAddTaskModal?: (categoryId: string, categoryTitle: string, categoryColor: string) => void;
 }
 
 const colorMap: Record<string, { 
@@ -96,74 +92,27 @@ const sourceIcons: Record<string, string> = {
   jira: '🎯',
 };
 
-export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, onAddToToday, onOpenAddTaskModal }: CategoryCardProps) {
+export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, onAddToToday }: CategoryCardProps) {
   const colors = colorMap[category.color] || colorMap.teal;
-
-  // Filter tasks based on time and energy
-  const filterTask = (task: any) => {
-    // Time filter
-    const timeMatch = (() => {
-      const duration = task.duration;
-      if (!duration) return true; // Show tasks without duration
-      
-      const minutes = parseInt(duration);
-      if (timeFilter === '15m') return minutes <= 15;
-      if (timeFilter === '30m') return minutes <= 30;
-      if (timeFilter === '1h') return minutes <= 60;
-      return true;
-    })();
-
-    // Energy filter
-    const energyMatch = task.energy === energyLevel || !task.energy;
-
-    return timeMatch && energyMatch;
-  };
-
-  const filteredInProgress = category.inProgress.filter(filterTask);
-  const filteredUpNext = category.upNext.filter(filterTask);
-
-  const hasFilteredResults = filteredInProgress.length > 0 || filteredUpNext.length > 0;
 
   return (
     <div className={`bg-gradient-to-br ${colors.bg} rounded-xl p-4 shadow-sm border ${colors.border} hover:shadow-md transition-all`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-slate-900 dark:text-slate-100">{category.title}</h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onOpenAddTaskModal && onOpenAddTaskModal(category.id, category.title, category.color)}
-            className={`px-2.5 py-1.5 rounded-lg ${colors.progressBg} border ${colors.border} hover:border-slate-300 dark:hover:border-slate-600 transition-all group/add flex items-center gap-1.5`}
-            title="Add task to this category"
-          >
-            <Plus className={`w-3.5 h-3.5 ${colors.accent} group-hover/add:scale-110 transition-transform`} />
-            <span className={`text-xs ${colors.accent} hidden sm:inline`}>Add Task</span>
-          </button>
-          <Badge variant="outline" className={colors.badge}>
-            {filteredInProgress.length + filteredUpNext.length}
-          </Badge>
-          {(filteredInProgress.length + filteredUpNext.length) < (category.inProgress.length + category.upNext.length) && (
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              of {category.inProgress.length + category.upNext.length}
-            </span>
-          )}
-        </div>
+        <Badge variant="outline" className={colors.badge}>
+          {category.inProgress.length + category.upNext.length}
+        </Badge>
       </div>
 
-      {!hasFilteredResults && (
-        <div className="py-8 text-center">
-          <p className="text-slate-400 dark:text-slate-500 text-sm">No tasks match current filters</p>
-          <p className="text-slate-400 dark:text-slate-600 text-xs mt-1">Try adjusting time or energy level</p>
-        </div>
-      )}
-
       {/* In Progress Section */}
-      {filteredInProgress.length > 0 && (
+      {category.inProgress.length > 0 && (
         <div className="mb-3">
           <div className="mb-2">
             <span className="text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wide">In Progress</span>
           </div>
           <div className="space-y-1.5">
-            {filteredInProgress.map((task) => (
+            {category.inProgress.map((task) => (
               <div
                 key={task.id}
                 className="relative group/task"
@@ -177,17 +126,9 @@ export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, o
                       <p className="text-slate-900 dark:text-slate-100 text-sm truncate group-hover/task:text-slate-700 dark:group-hover/task:text-slate-200">
                         {task.name}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          You {task.status}
-                        </p>
-                        {task.duration && (
-                          <>
-                            <span className="text-slate-300 dark:text-slate-600">•</span>
-                            <span className="text-xs text-slate-400 dark:text-slate-500">{task.duration}</span>
-                          </>
-                        )}
-                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        You {task.status}
+                      </p>
                     </div>
                     <span className="text-base flex-shrink-0">{sourceIcons[task.source] || '📄'}</span>
                   </div>
@@ -212,14 +153,14 @@ export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, o
       )}
 
       {/* Up Next Section */}
-      {filteredUpNext.length > 0 && (
-        <div className="mb-3">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500" />
-            <span className="text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wide">Up Next</span>
-          </div>
-          <div className="space-y-1.5">
-            {filteredUpNext.map((task) => (
+      <div className="mb-3">
+        <div className="flex items-center gap-1.5 mb-2">
+          <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500" />
+          <span className="text-slate-600 dark:text-slate-400 text-xs uppercase tracking-wide">Up Next</span>
+        </div>
+        <div className="space-y-1.5">
+          {category.upNext.length > 0 ? (
+            category.upNext.slice(0, 3).map((task) => (
               <div
                 key={task.id}
                 className="relative group/task"
@@ -233,21 +174,7 @@ export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, o
                       <p className="text-slate-900 dark:text-slate-100 text-sm truncate group-hover/task:text-slate-700 dark:group-hover/task:text-slate-200">
                         {task.name}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{task.duration}</span>
-                        {task.energy && (
-                          <>
-                            <span className="text-slate-300 dark:text-slate-600">•</span>
-                            <span className={`text-xs ${
-                              task.energy === 'Low' ? 'text-blue-500 dark:text-blue-400' :
-                              task.energy === 'Medium' ? 'text-amber-500 dark:text-amber-400' :
-                              'text-rose-500 dark:text-rose-400'
-                            }`}>
-                              {task.energy} energy
-                            </span>
-                          </>
-                        )}
-                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{task.duration}</p>
                     </div>
                     <span className="text-base flex-shrink-0">{sourceIcons[task.source] || '📄'}</span>
                   </div>
@@ -266,13 +193,17 @@ export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, o
                   <span className="sm:hidden">Add</span>
                 </button>
               </div>
-            ))}
-          </div>
+            ))
+          ) : (
+            <div className="px-3 py-3 bg-white/40 dark:bg-slate-800/40 rounded-lg border border-slate-200/30 dark:border-slate-700/30 text-center">
+              <p className="text-slate-400 dark:text-slate-500 text-xs">All clear</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Suggested Next Task */}
-      {hasFilteredResults && category.suggestedTask && (
+      {category.suggestedTask && (
         <div className="mt-3 pt-3 border-t border-slate-200/50 dark:border-slate-700/50">
           <div className="flex items-center gap-2">
             <Sparkles className={`w-3.5 h-3.5 ${colors.accent}`} />
