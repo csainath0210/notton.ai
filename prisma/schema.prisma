@@ -1,0 +1,92 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum EnergyLevel {
+  low
+  med
+  high
+}
+
+enum Source {
+  notion
+  slack
+  jira
+  canvas
+  manual
+}
+
+enum AuditAction {
+  create_task
+  update_task
+  complete_task
+  reopen_task
+  add_to_today
+  remove_from_today
+  create_category
+  update_category
+  archive_task
+  restore_task
+}
+
+model User {
+  id         String      @id @default(uuid())
+  email      String      @unique
+  createdAt  DateTime    @default(now())
+  categories Category[]
+  tasks      Task[]
+  audits     AuditLog[]
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  description String?
+  color       String
+  isDefault   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       Task[]
+
+  @@unique([userId, name], name: "userId_name")
+}
+
+model Task {
+  id              String      @id @default(uuid())
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  category        Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId      String
+  title           String
+  durationMinutes Int
+  energyLevel     EnergyLevel
+  source          Source
+  inToday         Boolean     @default(false)
+  todayPosition   Int?
+  completed       Boolean     @default(false)
+  archivedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  audits          AuditLog[]
+
+  @@unique([id, userId])
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  task      Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String?
+  action    AuditAction
+  payload   Json?
+  createdAt DateTime    @default(now())
+}

@@ -1,71 +1,70 @@
 # Notton.ai
 
-A modern task management and productivity application built with React, TypeScript, and Tailwind CSS.
+A modern task/day planner built with React, TypeScript, Tailwind, Express, and Prisma (Postgres).
 
 ## Features
 
-- **Smart Task Organization**: Organize tasks by categories (Work, Academics, Personal, Well-being)
-- **Time & Energy Filtering**: Filter tasks by time duration (15m, 30m, 1h) and energy level (Low, Medium, High)
-- **AI-Powered Recommendations**: Get personalized task recommendations based on your context
-- **Where You Left Off**: Quickly resume tasks you were working on
-- **Chat Interface**: Interactive chat modal for task management
-- **Modern UI**: Built with Radix UI components and Tailwind CSS v4
+- Category-based tasks (Work, Academics, Personal, Well-being + custom)
+- Today board with manual add/remove/reorder and completion
+- Time & energy filters (All, 15m, 30m, 45m, 1h, 2h+ and All/Low/Med/High)
+- Add/restore/delete tasks, hover add-to-today, bulk actions
+- Dark/light UI, Radix UI components, Tailwind v4
 
 ## Tech Stack
 
-- **React 19** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **Tailwind CSS v4** - Styling
-- **Radix UI** - Accessible component primitives
-- **Lucide React** - Icon library
-- **Class Variance Authority** - Component variant management
+- **Frontend**: React 19, TypeScript, Vite, Tailwind v4, Radix UI, Lucide
+- **Backend**: Express, Prisma (v6), Postgres
 
-## Getting Started
+## Setup
 
 ### Prerequisites
+- Node.js 18+
+- Postgres running locally or remote
 
-- Node.js 18+ 
-- npm or yarn
-
-### Installation
-
-1. Clone the repository
-```bash
-git clone <repository-url>
-cd notton.ai
+### Env
+Create `.env` (see `.env.example`):
+```
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DBNAME?schema=public"
+DEFAULT_USER_EMAIL="demo@notton.ai"
+PORT=4000
+VITE_API_URL="http://localhost:4000"
 ```
 
-2. Install dependencies
+### Install & DB
 ```bash
 npm install
+npx prisma migrate dev --name init
+npx prisma generate
+node prisma/seed.mjs   # seeds default user + 4 categories
 ```
 
-3. Start the development server
-```bash
-npm run dev
-```
+### Run
+- API: `npm run server:dev` (PORT from `.env`)
+- UI: `npm run dev` (uses `VITE_API_URL`)
 
-4. Open your browser and navigate to `http://localhost:5173`
+## Scripts
+- `npm run dev` – Frontend dev server
+- `npm run server:dev` – API dev server (tsx + nodemon)
+- `npm run build` – Build frontend
+- `npm run preview` – Preview frontend build
+- `npm run lint` – ESLint
+- `npm run prisma:generate` – Generate Prisma client
+- `npm run prisma:migrate` – Run migrations
+- `npm run prisma:seed` – Seed defaults
 
-## Available Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
+## Notes
+- Delete/restore are scoped per user (Postgres via Prisma).
+- Filters include “All” plus creation-time durations (15/30/45/60/120).
+- Add-to-today buttons show on hover; bulk actions appear when tasks are selected.
 
 ## Project Structure
-
 ```
-src/
-├── components/        # React components
-│   ├── ui/          # Reusable UI components (Radix UI based)
-│   └── ...          # Feature components
-├── styles/          # Global styles and Tailwind configuration
-└── main.tsx         # Application entry point
+src/                  # Frontend
+  components/         # UI components
+  styles/             # Tailwind
+server/               # Express API
+prisma/               # Schema & seed
 ```
 
 ## License
-
-MIT License - see [LICENSE](LICENSE) file for details
+MIT – see [LICENSE](LICENSE).

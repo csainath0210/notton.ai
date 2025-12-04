@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CategoryCard } from './components/CategoryCard';
 import { AddCategoryCard } from './components/AddCategoryCard';
 import { TodayPlanner } from './components/TodayPlanner';
@@ -11,9 +11,87 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { AddTaskToCategoryModal } from './components/AddTaskToCategoryModal';
 import { Battery, Clock } from 'lucide-react';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+type ApiCategory = {
+  id: string;
+  name: string;
+  description?: string | null;
+  color: string;
+  isDefault: boolean;
+  sortOrder: number;
+};
+
+type ApiTask = {
+  id: string;
+  categoryId: string;
+  title: string;
+  durationMinutes: number;
+  energyLevel: 'low' | 'med' | 'high';
+  source: string;
+  inToday: boolean;
+  todayPosition: number | null;
+  completed: boolean;
+  archivedAt?: string | null;
+};
+
+type TodayTask = {
+  id: string;
+  name: string;
+  category: string;
+  completed: boolean;
+  source: string;
+  duration?: string;
+  energy?: string;
+};
+
+type CategoryView = {
+  id: string;
+  title: string;
+  color: string;
+  inProgress: any[];
+  upNext: any[];
+  completed: any[];
+  suggestedTask?: string;
+};
+
+const durationLabel = (minutes?: number) => {
+  switch (minutes) {
+    case 15:
+      return '15 min';
+    case 30:
+      return '30 min';
+    case 60:
+      return '1 hour';
+    case 120:
+      return '2+ hours';
+    default:
+      return minutes ? `${minutes} min` : undefined;
+  }
+};
+
+const energyLabel = (level?: 'low' | 'med' | 'high') => {
+  if (!level) return undefined;
+  if (level === 'low') return 'Low';
+  if (level === 'med') return 'Medium';
+  return 'High';
+};
+
+async function fetchJson<T>(path: string, options?: RequestInit) {
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Request failed');
+  }
+  return res.json() as Promise<T>;
+}
+
 export default function App() {
-  const [timeFilter, setTimeFilter] = useState('30m');
-  const [energyLevel, setEnergyLevel] = useState('Medium');
+  const [timeFilter, setTimeFilter] = useState('All');
+  const [energyLevel, setEnergyLevel] = useState('All');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInitialMessage, setChatInitialMessage] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -27,70 +105,9 @@ export default function App() {
     color: string;
   } | null>(null);
 
-  const [todaysTasks, setTodaysTasks] = useState([
-    { id: '1', name: 'Section 2 of UX Report', category: 'Academics', completed: false, source: 'canvas' },
-    { id: '2', name: 'Review Q4 marketing deck', category: 'Work', completed: false, source: 'slack' },
-    { id: '3', name: 'Draft email to stakeholders', category: 'Work', completed: false, source: 'notion' },
-    { id: '4', name: 'Morning meditation', category: 'Well-being', completed: false, source: 'notion' },
-  ]);
-
-  const [categories, setCategories] = useState([
-    {
-      id: '1',
-      title: 'Work',
-      color: 'teal',
-      inProgress: [
-        { id: '1', name: 'Finish onboarding doc revisions', status: 'got midway through this', source: 'notion', lastOpened: '5 min ago', duration: '30 min', energy: 'Medium' },
-        { id: '2', name: 'Review design system proposal', status: 'started this', source: 'slack', lastOpened: '1h ago', duration: '45 min', energy: 'High' },
-      ],
-      upNext: [
-        { id: '3', name: 'Update quarterly roadmap', duration: '20 min', focus: 'High', source: 'jira', energy: 'High' },
-        { id: '4', name: 'Team standup notes', duration: '15 min', focus: 'Low', source: 'slack', energy: 'Low' },
-        { id: '5', name: 'Review analytics dashboard', duration: '25 min', focus: 'Medium', source: 'notion', energy: 'Medium' },
-      ],
-      suggestedTask: 'Review Q4 marketing deck'
-    },
-    {
-      id: '2',
-      title: 'Academics',
-      color: 'lavender',
-      inProgress: [
-        { id: '6', name: 'Section 2 of UX Report', status: 'got midway through this', source: 'canvas', lastOpened: 'recently', duration: '45 min', energy: 'High' },
-      ],
-      upNext: [
-        { id: '7', name: 'Read Chapter 4 - Design Systems', duration: '30 min', focus: 'Medium', source: 'canvas', energy: 'Medium' },
-        { id: '8', name: 'Prepare presentation slides', duration: '25 min', focus: 'High', source: 'notion', energy: 'High' },
-        { id: '9', name: 'Review peer feedback on prototype', duration: '20 min', focus: 'Medium', source: 'slack', energy: 'Low' },
-      ],
-      suggestedTask: 'Read Chapter 4 - Design Systems'
-    },
-    {
-      id: '3',
-      title: 'Personal',
-      color: 'blue',
-      inProgress: [
-        { id: '10', name: 'Plan weekend trip itinerary', status: 'started this', source: 'notion', lastOpened: '1h ago', duration: '30 min', energy: 'Low' },
-      ],
-      upNext: [
-        { id: '11', name: 'Book dentist appointment', duration: '5 min', focus: 'Low', source: 'notion', energy: 'Low' },
-        { id: '12', name: 'Reply to apartment inquiry', duration: '10 min', focus: 'Medium', source: 'slack', energy: 'Low' },
-        { id: '13', name: 'Order birthday gift for mom', duration: '15 min', focus: 'Low', source: 'notion', energy: 'Low' },
-      ],
-      suggestedTask: 'Book dentist appointment'
-    },
-    {
-      id: '4',
-      title: 'Well-being',
-      color: 'green',
-      inProgress: [],
-      upNext: [
-        { id: '14', name: 'Morning meditation', duration: '15 min', focus: 'Low', source: 'notion', energy: 'Low' },
-        { id: '15', name: 'Evening walk', duration: '30 min', focus: 'Low', source: 'notion', energy: 'Low' },
-        { id: '16', name: 'Journal reflection', duration: '10 min', focus: 'Medium', source: 'notion', energy: 'Low' },
-      ],
-      suggestedTask: 'Morning meditation'
-    },
-  ]);
+  const [todaysTasks, setTodaysTasks] = useState<TodayTask[]>([]);
+  const [categories, setCategories] = useState<CategoryView[]>([]);
+  const [categoryLookup, setCategoryLookup] = useState<Record<string, ApiCategory>>({});
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -99,17 +116,75 @@ export default function App() {
     return 'Good evening';
   };
 
-  const handleAddCategory = (newCategory: { title: string; color: string }) => {
-    const category = {
-      id: Date.now().toString(),
-      title: newCategory.title,
-      color: newCategory.color,
-      inProgress: [],
-      upNext: [],
-      suggestedTask: 'No tasks yet'
-    };
-    setCategories([...categories, category]);
+  const refreshData = async () => {
+    try {
+      const [catRes, taskRes, todayRes] = await Promise.all([
+        fetchJson<ApiCategory[]>('/categories'),
+        fetchJson<ApiTask[]>('/tasks'),
+        fetchJson<ApiTask[]>('/today'),
+      ]);
+
+      const lookup: Record<string, ApiCategory> = {};
+      catRes.forEach((c) => {
+        lookup[c.id] = c;
+      });
+      setCategoryLookup(lookup);
+
+      const categoryViews: CategoryView[] = catRes.map((cat) => {
+        const upNext = taskRes
+          .filter((task) => task.categoryId === cat.id && !task.inToday && !task.completed && !task.archivedAt)
+          .map((task) => ({
+            id: task.id,
+            name: task.title,
+            duration: durationLabel(task.durationMinutes),
+            focus: 'Available',
+            source: task.source,
+            energy: energyLabel(task.energyLevel),
+          }));
+
+        const completed = taskRes
+          .filter((task) => task.categoryId === cat.id && task.completed && !task.archivedAt)
+          .map((task) => ({
+            id: task.id,
+            name: task.title,
+            duration: durationLabel(task.durationMinutes),
+            source: task.source,
+            energy: energyLabel(task.energyLevel),
+          }));
+
+        return {
+          id: cat.id,
+          title: cat.name,
+          color: cat.color || 'teal',
+          inProgress: [],
+          upNext,
+          completed,
+          suggestedTask: upNext[0]?.name,
+        };
+      });
+
+      const todayTasks: TodayTask[] = todayRes
+        .filter((t) => !t.archivedAt)
+        .map((task) => ({
+          id: task.id,
+          name: task.title,
+          category: lookup[task.categoryId]?.name || 'Task',
+          completed: task.completed,
+          source: task.source,
+          duration: durationLabel(task.durationMinutes),
+          energy: energyLabel(task.energyLevel),
+        }));
+
+      setCategories(categoryViews);
+      setTodaysTasks(todayTasks);
+    } catch (error) {
+      console.error('Failed to refresh data', error);
+    }
   };
+
+  useEffect(() => {
+    refreshData();
+  }, []);
 
   const handleChatSubmit = (message: string) => {
     setChatInitialMessage(message);
@@ -120,51 +195,96 @@ export default function App() {
     console.log('Task clicked:', task);
   };
 
-  const handleAddTask = (task: { name: string; category: string }) => {
-    const newTask = {
-      id: Date.now().toString(),
-      name: task.name,
-      category: task.category,
-      completed: false,
-      source: 'notion'
-    };
-    setTodaysTasks([...todaysTasks, newTask]);
+  const handleAddCategory = async (newCategory: { title: string; color: string }) => {
+    try {
+      await fetchJson('/categories', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newCategory.title,
+          color: newCategory.color,
+          sortOrder: categories.length + 1,
+        }),
+      });
+      await refreshData();
+    } catch (error) {
+      console.error('Failed to add category', error);
+    }
   };
 
   const handleAddToToday = (task: any) => {
-    // Check if task already in today's tasks
-    const alreadyAdded = todaysTasks.some(t => t.id === task.id);
-    if (alreadyAdded) {
-      setConfirmationMessage(`${task.name} is already in today's tasks`);
-      setShowConfirmation(true);
-      setTimeout(() => setShowConfirmation(false), 2500);
-      return;
-    }
+    const alreadyAdded = todaysTasks.some((t) => t.id === task.id);
+    if (alreadyAdded) return;
 
-    // Add task to today's tasks
-    const newTask = {
-      id: task.id,
-      name: task.name,
-      category: task.category || 'Work',
-      completed: false,
-      source: task.source || 'notion'
-    };
-    setTodaysTasks([...todaysTasks, newTask]);
-    
-    // Show gentle confirmation
+    fetchJson(`/tasks/${task.id}/today`, {
+      method: 'PATCH',
+      body: JSON.stringify({ inToday: true }),
+    })
+      .then(() => refreshData())
+      .catch((err) => console.error('Failed to add to today', err));
+
     setConfirmationMessage(`Added to Today`);
     setShowConfirmation(true);
     setTimeout(() => setShowConfirmation(false), 2000);
   };
 
   const handleToggleTask = (taskId: string) => {
-    setTodaysTasks(todaysTasks.map(task => 
-      task.id === taskId ? { ...task, completed: !task.completed } : task
-    ));
+    const target = todaysTasks.find((t) => t.id === taskId);
+    if (!target) return;
+
+    fetchJson(`/tasks/${taskId}/complete`, {
+      method: 'PATCH',
+      body: JSON.stringify({ completed: !target.completed }),
+    })
+      .then(() => refreshData())
+      .catch((err) => console.error('Failed to toggle task', err));
+  };
+
+  const handleRemoveFromToday = (taskId: string) => {
+    fetchJson(`/tasks/${taskId}/today`, {
+      method: 'PATCH',
+      body: JSON.stringify({ inToday: false }),
+    })
+      .then(() => refreshData())
+      .catch((err) => console.error('Failed to move task back to category', err));
   };
 
   const handleReorderTasks = (newOrder: typeof todaysTasks) => {
-    setTodaysTasks(newOrder);
+    const ids = newOrder.map((t) => t.id);
+    fetchJson('/today/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ taskIds: ids }),
+    })
+      .then(() => refreshData())
+      .catch((err) => console.error('Failed to reorder today tasks', err));
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    // Optimistic UI update
+    setCategories((prev) =>
+      prev.map((cat) => ({
+        ...cat,
+        upNext: cat.upNext.filter((t: any) => t.id !== taskId),
+        inProgress: cat.inProgress.filter((t: any) => t.id !== taskId),
+        completed: cat.completed.filter((t: any) => t.id !== taskId),
+      }))
+    );
+    setTodaysTasks((prev) => prev.filter((t) => t.id !== taskId));
+
+    fetchJson(`/tasks/${taskId}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({}),
+    })
+      .then(() => refreshData())
+      .catch((err) => console.error('Failed to delete task', err));
+  };
+
+  const handleRestoreTask = (taskId: string) => {
+    fetchJson(`/tasks/${taskId}/complete`, {
+      method: 'PATCH',
+      body: JSON.stringify({ completed: false }),
+    })
+      .then(() => refreshData())
+      .catch((err) => console.error('Failed to restore task', err));
   };
 
   const handleOpenAddTaskModal = (categoryId: string, categoryTitle: string, categoryColor: string) => {
@@ -175,48 +295,68 @@ export default function App() {
   const handleAddTaskToCategory = (taskData: {
     name: string;
     duration: string;
-    energy: string;
+    energy: 'low' | 'med' | 'high';
     addToToday: boolean;
   }) => {
     if (!selectedCategory) return;
 
-    // Create new task
-    const newTask = {
-      id: Date.now().toString(),
-      name: taskData.name,
-      duration: taskData.duration,
-      focus: 'Medium',
-      source: 'notion',
-      energy: taskData.energy,
-    };
+    const durationMinutes = Number(taskData.duration) || 30;
 
-    // Add to category's upNext array
-    setCategories(categories.map(cat => {
-      if (cat.id === selectedCategory.id) {
-        return {
-          ...cat,
-          upNext: [...cat.upNext, newTask]
-        };
-      }
-      return cat;
-    }));
+    fetchJson('/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: taskData.name,
+        categoryId: selectedCategory.id,
+        durationMinutes,
+        energyLevel: taskData.energy,
+        source: 'manual',
+        addToToday: taskData.addToToday,
+      }),
+    })
+      .then(() => {
+        setConfirmationMessage(`Added to ${selectedCategory.title}`);
+        setShowConfirmation(true);
+        setTimeout(() => setShowConfirmation(false), 2000);
+        refreshData();
+      })
+      .catch((err) => console.error('Failed to add task to category', err));
+  };
 
-    // Optionally add to today's tasks
-    if (taskData.addToToday) {
-      const todayTask = {
-        id: newTask.id,
-        name: newTask.name,
-        category: selectedCategory.title,
-        completed: false,
-        source: 'notion'
-      };
-      setTodaysTasks([...todaysTasks, todayTask]);
+  const handleAddTask = (task: { name: string; category: string; duration?: string; energy?: string; addToToday?: boolean }) => {
+    const categoryEntry = Object.values(categoryLookup).find(
+      (c) => c.name.toLowerCase() === task.category.toLowerCase()
+    );
+    if (!categoryEntry) {
+      console.error('Category not found for task', task.category);
+      return;
     }
 
-    // Show confirmation
-    setConfirmationMessage(`Added to ${selectedCategory.title}`);
-    setShowConfirmation(true);
-    setTimeout(() => setShowConfirmation(false), 2000);
+    const durationMinutes = (() => {
+      const parsed = parseInt(task.duration || '30', 10);
+      if ([15, 30, 60, 120].includes(parsed)) return parsed;
+      return 30;
+    })();
+
+    const energyLevel = (() => {
+      const value = (task.energy || '').toLowerCase();
+      if (value.startsWith('l')) return 'low' as const;
+      if (value.startsWith('h')) return 'high' as const;
+      return 'med' as const;
+    })();
+
+    fetchJson('/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: task.name,
+        categoryId: categoryEntry.id,
+        durationMinutes,
+        energyLevel,
+        source: 'manual',
+        addToToday: task.addToToday ?? true,
+      }),
+    })
+      .then(() => refreshData())
+      .catch((err) => console.error('Failed to add task from today planner', err));
   };
 
   return (
@@ -239,6 +379,8 @@ export default function App() {
           tasks={todaysTasks}
           onAddTask={handleAddTask}
           onToggleTask={handleToggleTask}
+          onRemoveFromToday={handleRemoveFromToday}
+          onDeleteTask={handleDeleteTask}
           onReorderTasks={handleReorderTasks}
         />
 
@@ -257,7 +399,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                 <div className="inline-flex rounded-lg bg-white dark:bg-slate-800 p-0.5 shadow-sm border border-slate-200 dark:border-slate-700">
-                  {['15m', '30m', '1h'].map((time) => (
+                  {['All', '15m', '30m', '45m', '1h', '2h+'].map((time) => (
                     <button
                       key={time}
                       onClick={() => setTimeFilter(time)}
@@ -276,17 +418,19 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <Battery className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                 <div className="inline-flex rounded-lg bg-white dark:bg-slate-800 p-0.5 shadow-sm border border-slate-200 dark:border-slate-700">
-                  {['Low', 'Med', 'High'].map((energy, idx) => (
+                  {['All', 'Low', 'Med', 'High'].map((energy, idx) => (
                     <button
                       key={energy}
-                      onClick={() => setEnergyLevel(['Low', 'Medium', 'High'][idx])}
+                      onClick={() => setEnergyLevel(['All', 'Low', 'Medium', 'High'][idx])}
                       className={`px-2.5 py-1 rounded-md transition-all text-sm ${
-                        energyLevel === ['Low', 'Medium', 'High'][idx]
+                        energyLevel === ['All', 'Low', 'Medium', 'High'][idx]
                           ? energy === 'Low'
                             ? 'bg-blue-400 text-white shadow-sm'
                             : energy === 'Med'
                             ? 'bg-amber-400 text-white shadow-sm'
-                            : 'bg-rose-400 text-white shadow-sm'
+                            : energy === 'High'
+                            ? 'bg-rose-400 text-white shadow-sm'
+                            : 'bg-slate-600 text-white shadow-sm'
                           : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100'
                       }`}
                     >
@@ -309,6 +453,8 @@ export default function App() {
                 onTaskClick={handleTaskClick}
                 onAddToToday={handleAddToToday}
                 onOpenAddTaskModal={handleOpenAddTaskModal}
+                onDeleteTask={handleDeleteTask}
+                onRestoreTask={handleRestoreTask}
               />
             ))}
             <AddCategoryCard onAddCategory={handleAddCategory} />
