@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, GripVertical, Check, Sparkles, Clock, Zap } from 'lucide-react';
+import { Plus, GripVertical, Check, Sparkles, Clock, Zap, Undo2, Trash } from 'lucide-react';
 import { Button } from './ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -15,16 +15,19 @@ interface Task {
 
 interface TodayPlannerProps {
   tasks: Task[];
-  onAddTask: (task: { name: string; category: string; duration?: string; energy?: string }) => void;
+  onAddTask: (task: { name: string; category: string; duration?: string; energy?: string; addToToday?: boolean }) => void;
   onToggleTask: (taskId: string) => void;
+  onRemoveFromToday: (taskId: string) => void;
+  onDeleteTask: (taskId: string) => void;
   onReorderTasks: (tasks: Task[]) => void;
 }
 
 const sourceIcons: Record<string, string> = {
-  slack: '💬',
-  notion: '📝',
-  canvas: '🎓',
-  jira: '🎯',
+  slack: 'Slack',
+  notion: 'Notion',
+  canvas: 'Canvas',
+  jira: 'Jira',
+  manual: 'Manual',
 };
 
 const categoryColors: Record<string, string> = {
@@ -34,7 +37,7 @@ const categoryColors: Record<string, string> = {
   'Well-being': 'text-green-600',
 };
 
-export function TodayPlanner({ tasks, onAddTask, onToggleTask, onReorderTasks }: TodayPlannerProps) {
+export function TodayPlanner({ tasks, onAddTask, onToggleTask, onRemoveFromToday, onDeleteTask, onReorderTasks }: TodayPlannerProps) {
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskCategory, setNewTaskCategory] = useState('Work');
@@ -48,7 +51,8 @@ export function TodayPlanner({ tasks, onAddTask, onToggleTask, onReorderTasks }:
         name: newTaskName, 
         category: newTaskCategory, 
         duration: newTaskDuration, 
-        energy: newTaskEnergy 
+        energy: newTaskEnergy,
+        addToToday,
       });
       setNewTaskName('');
       setNewTaskDuration('');
@@ -126,8 +130,25 @@ export function TodayPlanner({ tasks, onAddTask, onToggleTask, onReorderTasks }:
               </p>
             </div>
 
-            {/* Source Icon */}
-            <span className="text-lg flex-shrink-0">{sourceIcons[task.source] || '📄'}</span>
+            {/* Source + Remove */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <span className="px-2 py-0.5 rounded-full text-[11px] bg-slate-200/70 dark:bg-slate-700/70 text-slate-600 dark:text-slate-200 border border-slate-300/60 dark:border-slate-600/60">
+                {sourceIcons[task.source] || 'Task'}
+              </span>
+              <button
+                onClick={() => onRemoveFromToday(task.id)}
+                className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 hover:text-teal-500 dark:hover:text-teal-400"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+                Move to category
+              </button>
+              <button
+                onClick={() => onDeleteTask(task.id)}
+                className="text-xs text-rose-500 hover:text-rose-400 inline-flex items-center gap-1"
+              >
+                <Trash className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         ))}
 

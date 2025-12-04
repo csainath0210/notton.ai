@@ -16,7 +16,7 @@ interface AddTaskToCategoryModalProps {
   onAddTask: (taskData: {
     name: string;
     duration: string;
-    energy: string;
+    energy: 'low' | 'med' | 'high';
     addToToday: boolean;
   }) => void;
 }
@@ -33,15 +33,14 @@ const colorMap: Record<string, { accent: string; bg: string }> = {
 const timeOptions = [
   { label: '15m', value: '15', minutes: 15 },
   { label: '30m', value: '30', minutes: 30 },
-  { label: '45m', value: '45', minutes: 45 },
   { label: '1h', value: '60', minutes: 60 },
   { label: '2+ hrs', value: '120', minutes: 120 },
 ];
 
 const energyOptions = [
-  { label: 'Low', value: 'Low', color: 'from-blue-400 to-cyan-400' },
-  { label: 'Med', value: 'Medium', color: 'from-amber-400 to-orange-400' },
-  { label: 'High', value: 'High', color: 'from-rose-400 to-pink-400' },
+  { label: 'Low', value: 'low', color: 'from-blue-400 to-cyan-400' },
+  { label: 'Med', value: 'med', color: 'from-amber-400 to-orange-400' },
+  { label: 'High', value: 'high', color: 'from-rose-400 to-pink-400' },
 ];
 
 export function AddTaskToCategoryModal({ 
@@ -52,7 +51,7 @@ export function AddTaskToCategoryModal({
 }: AddTaskToCategoryModalProps) {
   const [taskName, setTaskName] = useState('');
   const [duration, setDuration] = useState('30');
-  const [energy, setEnergy] = useState('Medium');
+  const [energy, setEnergy] = useState<'low' | 'med' | 'high'>('med');
   const [addToToday, setAddToToday] = useState(false);
 
   const colors = colorMap[category?.color || 'teal'];
@@ -69,7 +68,7 @@ export function AddTaskToCategoryModal({
       // Reset form
       setTaskName('');
       setDuration('30');
-      setEnergy('Medium');
+      setEnergy('med');
       setAddToToday(false);
       onClose();
     }
@@ -79,7 +78,7 @@ export function AddTaskToCategoryModal({
     // Reset form on close
     setTaskName('');
     setDuration('30');
-    setEnergy('Medium');
+    setEnergy('med');
     setAddToToday(false);
     onClose();
   };

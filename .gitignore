@@ -17,6 +17,7 @@ dist
 dist-ssr
 build
 *.local
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -24,6 +25,10 @@ build
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Project env
+.vercel
+.turbo
 
 # Editor directories and files
 .vscode/*
