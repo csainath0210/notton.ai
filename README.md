@@ -28,7 +28,6 @@ DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DBNAME?schema=public"
 DEFAULT_USER_EMAIL="demo@notton.ai"
 PORT=4000
 VITE_API_URL="http://localhost:4000"
-VITE_GEMINI_API_KEY=AIzaSyDSgBmeDTC8_glM2oioDOmuot8156I3mVc
 ```
 
 Replace API key if it hits limit
