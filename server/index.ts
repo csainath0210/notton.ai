@@ -6,6 +6,12 @@ import { z } from 'zod';
 
 dotenv.config();
 
+if (!process.env.DATABASE_URL) {
+  // eslint-disable-next-line no-console
+  console.error('DATABASE_URL is not set. Please provide it in the environment.');
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 const app = express();
 
@@ -14,6 +20,7 @@ app.use(express.json());
 
 const PORT = Number(process.env.PORT) || 4000;
 const DEFAULT_USER_EMAIL = process.env.DEFAULT_USER_EMAIL || 'demo@notton.ai';
+const SHOULD_SEED = process.env.SEED_ON_START !== 'false';
 
 async function getUserId(): Promise<string> {
   const user = await prisma.user.findUnique({ where: { email: DEFAULT_USER_EMAIL } });
@@ -399,5 +406,9 @@ async function ensureSeeded() {
 app.listen(PORT, async () => {
   // eslint-disable-next-line no-console
   console.log(`API running on port ${PORT}`);
-  await ensureSeeded();
+  if (SHOULD_SEED) {
+    await ensureSeeded();
+  } else {
+    console.log('Skipping seed on start (SEED_ON_START=false)');
+  }
 });
