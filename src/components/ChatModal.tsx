@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Send, Sparkles, User, AlertCircle } from 'lucide-react';
+import { X, Send, Sparkles, User, AlertCircle, CheckCircle, Plus } from 'lucide-react';
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
+  taskCreated?: {
+    id: string;
+    title: string;
+  };
 }
 
 interface ChatModalProps {
@@ -14,9 +18,18 @@ interface ChatModalProps {
   initialMessage: string;
   userId: string;
   apiKey?: string;
+  onTaskCreated?: () => void; // Callback to refresh tasks in parent component
 }
 
-export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey }: ChatModalProps) {
+interface TaskCreationRequest {
+  title: string;
+  categoryId: string;
+  durationMinutes: number;
+  energyLevel: 'low' | 'med' | 'high';
+  addToToday?: boolean;
+}
+
+export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onTaskCreated }: ChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -46,7 +59,6 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey }: C
 
   const fetchUserContext = async () => {
     try {
-      // Use the full backend URL
       const backendUrl = 'http://localhost:4000';
       const response = await fetch(`${backendUrl}/api/chat/context`);
       if (!response.ok) throw new Error('Failed to fetch user context');
@@ -57,23 +69,73 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey }: C
     }
   };
 
+  const createTask = async (taskData: TaskCreationRequest) => {
+    try {
+      const backendUrl = 'http://localhost:4000';
+      const response = await fetch(`${backendUrl}/tasks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...taskData,
+          source: 'manual',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create task');
+      }
+
+      const createdTask = await response.json();
+      return createdTask;
+    } catch (err) {
+      console.error('Error creating task:', err);
+      throw err;
+    }
+  };
+
+  const parseTaskCreationFromAI = (aiResponse: string, context: any): TaskCreationRequest | null => {
+    // Look for JSON task creation request in the AI response
+    const jsonMatch = aiResponse.match(/\{[^}]*"action":\s*"create_task"[^}]*\}/);
+    if (!jsonMatch) return null;
+
+    try {
+      const taskRequest = JSON.parse(jsonMatch[0]);
+      
+      // Validate required fields
+      if (!taskRequest.title || !taskRequest.categoryId || !taskRequest.durationMinutes || !taskRequest.energyLevel) {
+        return null;
+      }
+
+      return {
+        title: taskRequest.title,
+        categoryId: taskRequest.categoryId,
+        durationMinutes: taskRequest.durationMinutes,
+        energyLevel: taskRequest.energyLevel,
+        addToToday: taskRequest.addToToday || false,
+      };
+    } catch (err) {
+      console.error('Error parsing task creation:', err);
+      return null;
+    }
+  };
+
   const handleAIResponse = async (userMessage: string) => {
     setIsTyping(true);
     setError(null);
 
     try {
-      // Fetch user's tasks and categories from database
       const context = await fetchUserContext();
       
       if (!context) {
         throw new Error('Unable to connect to the task database. Please check if the backend server is running.');
       }
 
-      // Build context for Gemini
       const systemPrompt = buildSystemPrompt(context);
       
-      // Call Gemini API
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      // const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -86,7 +148,7 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey }: C
           }],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
           }
         })
       });
@@ -99,10 +161,43 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey }: C
       const data = await response.json();
       const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I couldn\'t generate a response.';
 
+      // Check if AI wants to create a task
+      const taskCreationRequest = parseTaskCreationFromAI(aiResponse, context);
+      
+      let createdTask = null;
+      if (taskCreationRequest) {
+        try {
+          createdTask = await createTask(taskCreationRequest);
+          
+          // Add system message about task creation
+          const systemMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'system',
+            content: `✓ Task created: "${createdTask.title}"`,
+            timestamp: new Date(),
+            taskCreated: {
+              id: createdTask.id,
+              title: createdTask.title,
+            },
+          };
+          setMessages(prev => [...prev, systemMessage]);
+
+          // Notify parent component to refresh
+          if (onTaskCreated) {
+            onTaskCreated();
+          }
+        } catch (err) {
+          console.error('Failed to create task:', err);
+        }
+      }
+
+      // Remove the JSON instruction from the response before displaying
+      const cleanedResponse = aiResponse.replace(/\{[^}]*"action":\s*"create_task"[^}]*\}/g, '').trim();
+
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: (Date.now() + 2).toString(),
         role: 'assistant',
-        content: aiResponse,
+        content: cleanedResponse || aiResponse,
         timestamp: new Date(),
       };
       
@@ -134,10 +229,10 @@ Current User Context:
 - Completed Tasks: ${stats.completedTasks}
 - Tasks in Today's List: ${stats.todayTasks}
 
-Categories:`;
+Available Categories:`;
 
     categories.forEach((cat: any) => {
-      prompt += `\n- ${cat.name}: ${cat.activeTasks} active tasks`;
+      prompt += `\n- ${cat.name} (ID: ${cat.id}): ${cat.activeTasks} active tasks${cat.description ? ' - ' + cat.description : ''}`;
     });
 
     prompt += `\n\nActive Tasks:`;
@@ -146,22 +241,43 @@ Categories:`;
     if (activeTasks.length === 0) {
       prompt += '\n- No active tasks';
     } else {
-      activeTasks.forEach((task: any) => {
+      activeTasks.slice(0, 20).forEach((task: any) => {
         const progress = task.inToday ? '(In Today)' : '';
         prompt += `\n- "${task.title}" - ${task.durationMinutes} min, ${task.energyLevel} energy, Category: ${task.category.name} ${progress}`;
       });
     }
 
-    prompt += `\n\nInstructions:
-- Help the user manage their tasks effectively
+    prompt += `\n\nCapabilities:
+- Help users manage and prioritize their tasks
 - Suggest tasks based on time available and energy level
+- **CREATE NEW TASKS** when users ask you to add, create, or make a new task
 - Provide specific task recommendations from their actual task list
 - Help prioritize work and maintain work-life balance
-- Be concise, friendly, and actionable
-- When suggesting tasks, reference them by their actual titles
-- Consider the task's duration, energy level, and category when making recommendations
 
-Answer the user's question based on their actual task data.`;
+TASK CREATION INSTRUCTIONS:
+When a user asks you to create a task (e.g., "add a task to...", "create a task for...", "remind me to..."), you MUST:
+1. Extract the task details from their request
+2. Choose the most appropriate category ID from the available categories above
+3. Estimate duration (15, 30, 60, or 120 minutes)
+4. Assess energy level (low, med, or high)
+5. Output a JSON object in this EXACT format:
+   {"action": "create_task", "title": "Task title", "categoryId": "uuid-here", "durationMinutes": 30, "energyLevel": "med", "addToToday": false}
+
+6. After the JSON, provide a friendly confirmation message to the user
+
+Example:
+User: "Add a task to review the quarterly report"
+Your response: {"action": "create_task", "title": "Review quarterly report", "categoryId": "${categories[0]?.id}", "durationMinutes": 60, "energyLevel": "high", "addToToday": false}
+
+I've added a task to review the quarterly report. It's set for 60 minutes with high energy required. Would you like me to add it to your Today list?
+
+IMPORTANT:
+- Always use valid category IDs from the list above
+- Duration must be exactly 15, 30, 60, or 120
+- Energy level must be exactly "low", "med", or "high"
+- Be conversational and friendly in your responses
+- When suggesting tasks, reference them by their actual titles
+- Consider the task's duration, energy level, and category when making recommendations`;
 
     return prompt;
   };
@@ -196,7 +312,7 @@ Answer the user's question based on their actual task data.`;
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Notton AI Assistant</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Powered by Gemini</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Powered by Gemini • Can create tasks</p>
             </div>
           </div>
           <button
@@ -220,27 +336,35 @@ Answer the user's question based on their actual task data.`;
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4 bg-white dark:bg-slate-900">
           {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              {message.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-teal-500 flex items-center justify-center shadow-sm flex-shrink-0">
-                  <Sparkles className="w-4 h-4 text-white" />
+            <div key={message.id}>
+              {message.role === 'system' ? (
+                <div className="flex items-center justify-center">
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-full px-4 py-2 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    <p className="text-sm text-green-700 dark:text-green-300">{message.content}</p>
+                  </div>
                 </div>
-              )}
-              <div
-                className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-                  message.role === 'user'
-                    ? 'bg-teal-500 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
-              </div>
-              {message.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center shadow-sm flex-shrink-0">
-                  <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+              ) : (
+                <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {message.role === 'assistant' && (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-teal-500 flex items-center justify-center shadow-sm flex-shrink-0">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[70%] rounded-2xl px-4 py-3 ${
+                      message.role === 'user'
+                        ? 'bg-teal-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                  </div>
+                  {message.role === 'user' && (
+                    <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center shadow-sm flex-shrink-0">
+                      <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -276,7 +400,7 @@ Answer the user's question based on their actual task data.`;
                   handleSubmit(e);
                 }
               }}
-              placeholder="Ask about your tasks..."
+              placeholder="Ask about tasks or say 'create a task to...'"
               rows={1}
               className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-slate-100 resize-none"
               style={{ maxHeight: '120px' }}
