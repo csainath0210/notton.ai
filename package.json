@@ -12,8 +12,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server:dev": "nodemon --watch server --ext ts --exec \"npx tsx --tsconfig tsconfig.server.json server/index.ts\"",
+    "start": "npx tsx server/index.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.mjs"
   },
   "dependencies": {
