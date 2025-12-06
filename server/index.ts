@@ -89,6 +89,39 @@ app.post('/categories', async (req, res) => {
   }
 });
 
+// DELETE /categories/:id
+app.delete('/categories/:id', async (req, res) => {
+  try {
+    const userId = await getUserId();
+    const category = await prisma.category.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    if (category.userId !== userId) {
+      return res.status(403).json({ error: 'Not authorized to delete this category' });
+    }
+
+    if (category.isDefault) {
+      return res.status(400).json({ error: 'Cannot delete default categories' });
+    }
+
+    // Delete the category (tasks will be cascade deleted due to onDelete: Cascade in schema)
+    await prisma.category.delete({
+      where: { id: req.params.id },
+    });
+
+    await logAudit(userId, AuditAction.update_category, undefined, { categoryId: category.id, action: 'delete' });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
 // GET /tasks?category_id=...
 app.get('/tasks', async (req, res) => {
   const categoryId = req.query.category_id as string | undefined;
