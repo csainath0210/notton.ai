@@ -10,6 +10,16 @@ import { AddConfirmation } from './components/AddConfirmation';
 import { ThemeToggle } from './components/ThemeToggle';
 import { AddTaskToCategoryModal } from './components/AddTaskToCategoryModal';
 import { Battery, Clock } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './components/ui/alert-dialog';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -49,6 +59,7 @@ type CategoryView = {
   id: string;
   title: string;
   color: string;
+  isDefault: boolean;
   inProgress: any[];
   upNext: any[];
   completed: any[];
@@ -105,6 +116,13 @@ export default function App() {
     color: string;
   } | null>(null);
 
+  // Delete Category Confirmation State
+  const [categoryToDelete, setCategoryToDelete] = useState<{
+    id: string;
+    title: string;
+    taskCount: number;
+  } | null>(null);
+
   const [todaysTasks, setTodaysTasks] = useState<TodayTask[]>([]);
   const [categories, setCategories] = useState<CategoryView[]>([]);
   const [categoryLookup, setCategoryLookup] = useState<Record<string, ApiCategory>>({});
@@ -156,6 +174,7 @@ export default function App() {
           id: cat.id,
           title: cat.name,
           color: cat.color || 'teal',
+          isDefault: cat.isDefault,
           inProgress: [],
           upNext,
           completed,
@@ -209,6 +228,31 @@ export default function App() {
     } catch (error) {
       console.error('Failed to add category', error);
     }
+  };
+
+  const handleDeleteCategory = async (categoryId: string) => {
+    try {
+      await fetchJson(`/categories/${categoryId}`, {
+        method: 'DELETE',
+      });
+      setCategoryToDelete(null);
+      await refreshData();
+      setConfirmationMessage('Category deleted');
+      setShowConfirmation(true);
+      setTimeout(() => setShowConfirmation(false), 2000);
+    } catch (error) {
+      console.error('Failed to delete category', error);
+      setCategoryToDelete(null);
+    }
+  };
+
+  const handleRequestDeleteCategory = (category: CategoryView) => {
+    const taskCount = category.inProgress.length + category.upNext.length + category.completed.length;
+    setCategoryToDelete({
+      id: category.id,
+      title: category.title,
+      taskCount,
+    });
   };
 
   const handleAddToToday = (task: any) => {
@@ -455,6 +499,7 @@ export default function App() {
                 onOpenAddTaskModal={handleOpenAddTaskModal}
                 onDeleteTask={handleDeleteTask}
                 onRestoreTask={handleRestoreTask}
+                onDeleteCategory={handleRequestDeleteCategory}
               />
             ))}
             <AddCategoryCard onAddCategory={handleAddCategory} />
@@ -488,6 +533,41 @@ export default function App() {
         category={selectedCategory}
         onAddTask={handleAddTaskToCategory}
       />
+
+      {/* Delete Category Confirmation Dialog */}
+      <AlertDialog open={!!categoryToDelete} onOpenChange={(open) => !open && setCategoryToDelete(null)}>
+        <AlertDialogContent className="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-900 dark:text-slate-100">
+              Delete Category
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600 dark:text-slate-400">
+              {categoryToDelete && (
+                <>
+                  Are you sure you want to delete <strong>"{categoryToDelete.title}"</strong>?
+                  {categoryToDelete.taskCount > 0 && (
+                    <span className="block mt-2 text-rose-600 dark:text-rose-400">
+                      This will permanently delete {categoryToDelete.taskCount} task{categoryToDelete.taskCount !== 1 ? 's' : ''} in this category.
+                    </span>
+                  )}
+                  <span className="block mt-2">This action cannot be undone.</span>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => categoryToDelete && handleDeleteCategory(categoryToDelete.id)}
+              className="bg-rose-500 hover:bg-rose-600 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

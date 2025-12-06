@@ -37,7 +37,7 @@ const timeOptions = [
   { label: '2+ hrs', value: '120', minutes: 120 },
 ];
 
-const energyOptions = [
+const energyOptions: Array<{ label: string; value: 'low' | 'med' | 'high'; color: string }> = [
   { label: 'Low', value: 'low', color: 'from-blue-400 to-cyan-400' },
   { label: 'Med', value: 'med', color: 'from-amber-400 to-orange-400' },
   { label: 'High', value: 'high', color: 'from-rose-400 to-pink-400' },

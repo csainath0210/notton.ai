@@ -1,6 +1,5 @@
 import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Sparkles, Eye, Plus, Clock, ArrowUpCircle } from 'lucide-react';
+import { Sparkles, Clock, ArrowUpCircle } from 'lucide-react';
 
 interface InProgressTask {
   id: string;
@@ -92,7 +91,7 @@ const sourceIcons: Record<string, string> = {
   jira: '🎯',
 };
 
-export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, onAddToToday }: CategoryCardProps) {
+export function CategoryCard({ category, timeFilter: _timeFilter, energyLevel: _energyLevel, onTaskClick, onAddToToday }: CategoryCardProps) {
   const colors = colorMap[category.color] || colorMap.teal;
 
   return (
