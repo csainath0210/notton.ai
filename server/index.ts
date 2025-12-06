@@ -344,7 +344,60 @@ app.patch('/tasks/:id/archive', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// Auto-seed on startup if user doesn't exist or has no default categories
+async function ensureSeeded() {
+  try {
+    const { randomUUID } = await import('node:crypto');
+    const email = process.env.DEFAULT_USER_EMAIL || 'demo@notton.ai';
+    const fixedId = process.env.DEFAULT_USER_ID;
+
+    // Check if user exists, create if not
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      console.log('No user found. Creating default user...');
+      user = await prisma.user.create({
+        data: { id: fixedId || randomUUID(), email },
+      });
+    }
+
+    // Check if default categories exist
+    const categories = await prisma.category.findMany({
+      where: { userId: user.id, isDefault: true },
+    });
+
+    if (categories.length === 0) {
+      console.log('No default categories found. Seeding database...');
+      const DEFAULT_CATEGORIES = [
+        { name: 'Work', description: 'Professional tasks, meetings, deliverables, communications', color: 'teal', sortOrder: 1 },
+        { name: 'Academics', description: 'Assignments, readings, coursework, exams, deadlines', color: 'lavender', sortOrder: 2 },
+        { name: 'Personal', description: 'Errands, household, relationships, finances', color: 'blue', sortOrder: 3 },
+        { name: 'Well-being', description: 'Meditation, exercise, rest, self-care', color: 'green', sortOrder: 4 },
+      ];
+
+      for (const cat of DEFAULT_CATEGORIES) {
+        await prisma.category.upsert({
+          where: { userId_name: { userId: user.id, name: cat.name } },
+          update: {},
+          create: {
+            ...cat,
+            isDefault: true,
+            userId: user.id,
+          },
+        });
+      }
+      console.log('Database seeded successfully with default categories');
+    } else {
+      console.log(`Found ${categories.length} default categories`);
+    }
+  } catch (error) {
+    console.error('Error during seeding:', error);
+    // Don't exit - let the server start and try again on first request
+  }
+}
+
+// Start server
+app.listen(PORT, async () => {
   // eslint-disable-next-line no-console
   console.log(`API running on port ${PORT}`);
+  await ensureSeeded();
 });
