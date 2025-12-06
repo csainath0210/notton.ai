@@ -6,6 +6,12 @@ import { z } from 'zod';
 
 dotenv.config();
 
+if (!process.env.DATABASE_URL) {
+  // eslint-disable-next-line no-console
+  console.error('DATABASE_URL is not set. Please provide it in the environment.');
+  process.exit(1);
+}
+
 const prisma = new PrismaClient();
 const app = express();
 
@@ -14,6 +20,7 @@ app.use(express.json());
 
 const PORT = Number(process.env.PORT) || 4000;
 const DEFAULT_USER_EMAIL = process.env.DEFAULT_USER_EMAIL || 'demo@notton.ai';
+const SHOULD_SEED = process.env.SEED_ON_START !== 'false';
 
 async function getUserId(): Promise<string> {
   const user = await prisma.user.findUnique({ where: { email: DEFAULT_USER_EMAIL } });
@@ -196,6 +203,39 @@ app.post('/categories', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+// DELETE /categories/:id
+app.delete('/categories/:id', async (req, res) => {
+  try {
+    const userId = await getUserId();
+    const category = await prisma.category.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+
+    if (category.userId !== userId) {
+      return res.status(403).json({ error: 'Not authorized to delete this category' });
+    }
+
+    if (category.isDefault) {
+      return res.status(400).json({ error: 'Cannot delete default categories' });
+    }
+
+    // Delete the category (tasks will be cascade deleted due to onDelete: Cascade in schema)
+    await prisma.category.delete({
+      where: { id: req.params.id },
+    });
+
+    await logAudit(userId, AuditAction.update_category, undefined, { categoryId: category.id, action: 'delete' });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to delete category' });
   }
 });
 
@@ -421,9 +461,66 @@ app.patch('/tasks/:id/archive', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// Auto-seed on startup if user doesn't exist or has no default categories
+async function ensureSeeded() {
+  try {
+    const { randomUUID } = await import('node:crypto');
+    const email = process.env.DEFAULT_USER_EMAIL || 'demo@notton.ai';
+    const fixedId = process.env.DEFAULT_USER_ID;
+
+    // Check if user exists, create if not
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      console.log('No user found. Creating default user...');
+      user = await prisma.user.create({
+        data: { id: fixedId || randomUUID(), email },
+      });
+    }
+
+    // Check if default categories exist
+    const categories = await prisma.category.findMany({
+      where: { userId: user.id, isDefault: true },
+    });
+
+    if (categories.length === 0) {
+      console.log('No default categories found. Seeding database...');
+      const DEFAULT_CATEGORIES = [
+        { name: 'Work', description: 'Professional tasks, meetings, deliverables, communications', color: 'teal', sortOrder: 1 },
+        { name: 'Academics', description: 'Assignments, readings, coursework, exams, deadlines', color: 'lavender', sortOrder: 2 },
+        { name: 'Personal', description: 'Errands, household, relationships, finances', color: 'blue', sortOrder: 3 },
+        { name: 'Well-being', description: 'Meditation, exercise, rest, self-care', color: 'green', sortOrder: 4 },
+      ];
+
+      for (const cat of DEFAULT_CATEGORIES) {
+        await prisma.category.upsert({
+          where: { userId_name: { userId: user.id, name: cat.name } },
+          update: {},
+          create: {
+            ...cat,
+            isDefault: true,
+            userId: user.id,
+          },
+        });
+      }
+      console.log('Database seeded successfully with default categories');
+    } else {
+      console.log(`Found ${categories.length} default categories`);
+    }
+  } catch (error) {
+    console.error('Error during seeding:', error);
+    // Don't exit - let the server start and try again on first request
+  }
+}
+
+// Start server
+app.listen(PORT, async () => {
   // eslint-disable-next-line no-console
   console.log(`API running on port ${PORT}`);
+  if (SHOULD_SEED) {
+    await ensureSeeded();
+  } else {
+    console.log('Skipping seed on start (SEED_ON_START=false)');
+  }
 });
 
 

@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Plus, GripVertical, Check, Sparkles, Clock, Zap, Undo2, Trash } from 'lucide-react';
+import { Plus, GripVertical, Check, Clock, Zap, Undo2, Trash } from 'lucide-react';
 import { Button } from './ui/button';
-import { motion, AnimatePresence } from 'framer-motion';
 
 interface Task {
   id: string;
@@ -37,7 +36,7 @@ const categoryColors: Record<string, string> = {
   'Well-being': 'text-green-600',
 };
 
-export function TodayPlanner({ tasks, onAddTask, onToggleTask, onRemoveFromToday, onDeleteTask, onReorderTasks }: TodayPlannerProps) {
+export function TodayPlanner({ tasks, onAddTask, onToggleTask, onRemoveFromToday, onDeleteTask, onReorderTasks: _onReorderTasks }: TodayPlannerProps) {
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
   const [newTaskCategory, setNewTaskCategory] = useState('Work');
@@ -94,7 +93,7 @@ export function TodayPlanner({ tasks, onAddTask, onToggleTask, onRemoveFromToday
 
       {/* Today's Task List */}
       <div className="space-y-2 mb-5">
-        {tasks.map((task, index) => (
+        {tasks.map((task) => (
           <div
             key={task.id}
             className={`group flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 rounded-xl border transition-all ${

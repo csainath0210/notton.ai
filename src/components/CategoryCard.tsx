@@ -25,6 +25,7 @@ interface Category {
   id: string;
   title: string;
   color: string;
+  isDefault: boolean;
   inProgress: InProgressTask[];
   upNext: UpNextTask[];
   completed: UpNextTask[];
@@ -40,6 +41,7 @@ interface CategoryCardProps {
   onOpenAddTaskModal?: (categoryId: string, categoryTitle: string, categoryColor: string) => void;
   onDeleteTask?: (taskId: string) => void;
   onRestoreTask?: (taskId: string) => void;
+  onDeleteCategory?: (category: Category) => void;
 }
 
 const colorMap: Record<string, {
@@ -198,7 +200,7 @@ function TaskCard({
   );
 }
 
-export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, onAddToToday, onOpenAddTaskModal, onDeleteTask, onRestoreTask }: CategoryCardProps) {
+export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick: _onTaskClick, onAddToToday, onOpenAddTaskModal, onDeleteTask, onRestoreTask, onDeleteCategory }: CategoryCardProps) {
   const colors = colorMap[category.color] || colorMap.teal;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -275,6 +277,16 @@ export function CategoryCard({ category, timeFilter, energyLevel, onTaskClick, o
             <Plus className={`w-3.5 h-3.5 ${colors.accent} group-hover/add:scale-110 transition-transform`} />
             <span className={`text-xs ${colors.accent} hidden sm:inline`}>Add Task</span>
           </button>
+          {!category.isDefault && onDeleteCategory && (
+            <button
+              onClick={() => onDeleteCategory(category)}
+              className="px-2.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-all group/delete flex items-center gap-1.5"
+              title="Delete category and all its tasks"
+            >
+              <Trash className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 group-hover/delete:scale-110 transition-transform" />
+              <span className="text-xs text-rose-600 dark:text-rose-400 hidden sm:inline">Delete</span>
+            </button>
+          )}
           <Badge variant="outline" className={colors.badge}>
             {filteredInProgress.length + filteredUpNext.length}
           </Badge>
