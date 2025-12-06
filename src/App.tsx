@@ -472,7 +472,9 @@ export default function App() {
       <ChatModal
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
-        initialMessage={chatInitialMessage}
+        initialMessage="What should I work on today?"
+        userId={'default'}
+        apiKey={import.meta.env.VITE_GEMINI_API_KEY}
       />
 
       {/* Add Confirmation */}
