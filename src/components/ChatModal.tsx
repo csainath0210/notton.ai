@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react';
-import { X, Send, Sparkles, User, AlertCircle, CheckCircle, Plus } from 'lucide-react';
+import { X, Send, Sparkles, User, AlertCircle, CheckCircle } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
@@ -30,7 +30,7 @@ interface TaskCreationRequest {
   addToToday?: boolean;
 }
 
-export function ChatModal({ isOpen, onClose, initialMessage, userId, onTaskCreated }: ChatModalProps) {
+export function ChatModal({ isOpen, onClose, initialMessage, onTaskCreated }: ChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -102,7 +102,8 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, onTaskCreat
     }
   };
 
-  const parseTaskCreationFromAI = (aiResponse: string, context: any): TaskCreationRequest | null => {
+  const parseTaskCreationFromAI = (aiResponse: string): TaskCreationRequest | null => {
+
     const jsonMatch = aiResponse.match(/\{[^}]*"action":\s*"create_task"[^}]*\}/);
     if (!jsonMatch) return null;
 
@@ -178,7 +179,7 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, onTaskCreat
       const rawResponse = data?.message?.content || 'Sorry, I couldnâ€™t generate a response.';
       const aiResponse = stripSimpleMarkdown(rawResponse);
 
-      const taskCreationRequest = parseTaskCreationFromAI(aiResponse, context);
+      const taskCreationRequest = parseTaskCreationFromAI(aiResponse);
 
       let createdTask = null;
       if (taskCreationRequest) {

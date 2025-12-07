@@ -1,4 +1,4 @@
-import { Sparkles, Clock, Bell, Check } from 'lucide-react';
+import { Sparkles, Clock, Bell } from 'lucide-react';
 
 export function ContextInsights() {
   const insights = [
