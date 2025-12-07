@@ -517,7 +517,9 @@ export default function App() {
       <ChatModal
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
-        initialMessage={chatInitialMessage}
+        initialMessage={chatInitialMessage || 'What should I work on today?'}
+        userId={'default'}
+        onTaskCreated={refreshData}
       />
 
       {/* Add Confirmation */}

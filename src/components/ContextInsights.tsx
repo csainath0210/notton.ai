@@ -1,15 +1,10 @@
-import { Sparkles, Clock, Bell, Check } from 'lucide-react';
+import { Sparkles, Clock, Bell } from 'lucide-react';
 
 export function ContextInsights() {
   const insights = [
     {
-      icon: Check,
-      text: 'TODO: Update this Context Insights section after the LLM is implemented',
-      color: 'text-indigo-400'
-    },
-    {
       icon: Sparkles,
-      text: 'You last worked on your UX report — pick it up if you\'d like',
+      text: 'You last worked on your {placeholder} — pick it up if you\'d like',
       color: 'text-indigo-400'
     },
     {

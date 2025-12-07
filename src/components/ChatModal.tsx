@@ -1,24 +1,40 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Send, Sparkles, User } from 'lucide-react';
-import { Button } from './ui/button';
+﻿import { useState, useEffect, useRef } from 'react';
+import { X, Send, Sparkles, User, AlertCircle, CheckCircle } from 'lucide-react';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
+  taskCreated?: {
+    id: string;
+    title: string;
+  };
 }
 
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMessage: string;
+  userId: string;
+  onTaskCreated?: () => void; // Callback to refresh tasks in parent component
 }
 
-export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
+interface TaskCreationRequest {
+  title: string;
+  categoryId: string;
+  durationMinutes: number;
+  energyLevel: 'low' | 'med' | 'high';
+  addToToday?: boolean;
+}
+
+export function ChatModal({ isOpen, onClose, initialMessage, onTaskCreated }: ChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -26,8 +42,15 @@ export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
   };
 
   useEffect(() => {
+    if (isOpen) {
+      setMessages([]);
+      setInput('');
+      setError(null);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
     if (isOpen && initialMessage && messages.length === 0) {
-      // Add initial user message
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
@@ -35,20 +58,7 @@ export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
         timestamp: new Date(),
       };
       setMessages([userMessage]);
-      
-      // Simulate AI response after a short delay
-      setIsTyping(true);
-      setTimeout(() => {
-        const aiResponse = generateAIResponse(initialMessage);
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: aiResponse,
-          timestamp: new Date(),
-        };
-        setMessages([userMessage, assistantMessage]);
-        setIsTyping(false);
-      }, 1500);
+      handleAIResponse(initialMessage);
     }
   }, [isOpen, initialMessage]);
 
@@ -56,76 +66,250 @@ export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  const generateAIResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    // Task switching responses
-    if (lowerMessage.includes('switch') && (lowerMessage.includes('onboarding') || lowerMessage.includes('doc'))) {
-      return "Switching you back to 'Onboarding documentation for new hires' in your Work category — you were 40% done. I'll open this task in focus mode. Should I start a timer for 30 minutes?";
+  const fetchUserContext = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat/context`);
+      if (!response.ok) throw new Error('Failed to fetch user context');
+      return await response.json();
+    } catch (err) {
+      console.error('Error fetching context:', err);
+      return null;
     }
-    
-    if (lowerMessage.includes('switch') && lowerMessage.includes('ux report')) {
-      return "Resuming 'Section 2 of UX Report' from your Academics category — you're 65% done and making great progress! Should I enable focus mode to help you finish this section?";
-    }
-    
-    if (lowerMessage.includes('switch') || lowerMessage.includes('back to')) {
-      return "I can help you switch between your in-progress tasks. You currently have 4 tasks in progress:\n\n• Onboarding documentation (40% done)\n• Draft email to stakeholders (Midway)\n• Section 2 of UX Report (65% done)\n• Plan weekend trip itinerary (Started)\n\nWhich one would you like to resume?";
-    }
-    
-    // Time-based responses
-    if (lowerMessage.includes('20 minutes') || lowerMessage.includes('20 min')) {
-      return "Perfect! For a 20-minute window, I'd suggest:\n\n1. **Draft email to stakeholders** (20 min, High focus) — you're already midway through this\n2. **Plan weekend trip itinerary** (20 min remaining) — finish what you started\n3. **Book dentist appointment** (5 min) + **Reply to apartment inquiry** (10 min) — quick wins!\n\nWhich sounds best?";
-    }
-    
-    if (lowerMessage.includes('low energy') || lowerMessage.includes('low-energy')) {
-      return "Here are your best low-energy options right now:\n\n• Book dentist appointment (5 min)\n• Morning meditation (15 min)\n• Reply to apartment inquiry (10 min)\n• Evening walk (30 min)\n\nI'd start with the dentist appointment — it's quick and gives you momentum!";
-    }
-    
-    if (lowerMessage.includes('task') || lowerMessage.includes('to do') || lowerMessage.includes('todo')) {
-      return "I can help you manage your tasks! You have 4 tasks in progress and 11 tasks queued up. Based on your current energy level, I'd recommend resuming 'Section 2 of UX Report' — you're 65% done and on a roll. Want to finish it?";
-    }
-    
-    if (lowerMessage.includes('focus') || lowerMessage.includes('concentrate')) {
-      return "I notice you have several high-focus tasks ahead. I'd suggest tackling them during your peak productivity hours. Would you like to enable Focus Mode? It will help you work distraction-free on your most important tasks.";
-    }
-    
-    if (lowerMessage.includes('schedule') || lowerMessage.includes('plan')) {
-      return "Looking at your categories, I can help you create a balanced schedule. You have 4 tasks in progress and 11 pending. Let's prioritize:\n\n1. Finish your in-progress tasks first (better for context)\n2. Tackle high-focus work during peak energy\n3. Save low-energy tasks for later\n\nHow would you like to structure your time?";
-    }
-    
-    if (lowerMessage.includes('break') || lowerMessage.includes('rest')) {
-      return "It's great that you're thinking about breaks! I recommend taking a 15-minute break after every 90 minutes of focused work. Your Well-being category has some great options like 'Morning meditation' or 'Evening walk'. Would you like to schedule one?";
-    }
-    
-    return "I'm here to help you stay productive and balanced! I can help you:\n\n• Switch between in-progress tasks\n• Suggest tasks based on your time and energy\n• Prioritize what matters most\n• Keep track of progress\n\nWhat would you like to do?";
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (input.trim()) {
+  const createTask = async (taskData: TaskCreationRequest) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/tasks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...taskData,
+          source: 'manual',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create task');
+      }
+
+      const createdTask = await response.json();
+      return createdTask;
+    } catch (err) {
+      console.error('Error creating task:', err);
+      throw err;
+    }
+  };
+
+  const parseTaskCreationFromAI = (aiResponse: string): TaskCreationRequest | null => {
+
+    const jsonMatch = aiResponse.match(/\{[^}]*"action":\s*"create_task"[^}]*\}/);
+    if (!jsonMatch) return null;
+
+    try {
+      const taskRequest = JSON.parse(jsonMatch[0]);
+
+      if (!taskRequest.title || !taskRequest.categoryId || !taskRequest.durationMinutes || !taskRequest.energyLevel) {
+        return null;
+      }
+
+      return {
+        title: taskRequest.title,
+        categoryId: taskRequest.categoryId,
+        durationMinutes: taskRequest.durationMinutes,
+        energyLevel: taskRequest.energyLevel,
+        addToToday: taskRequest.addToToday || false,
+      };
+    } catch (err) {
+      console.error('Error parsing task creation:', err);
+      return null;
+    }
+  };
+
+  const stripSimpleMarkdown = (text: string) => {
+    return text
+      // strip fenced code blocks (with or without language label)
+      .replace(/```[a-zA-Z0-9]*\s*([\s\S]*?)```/g, '$1')
+      // inline code
+      .replace(/`([^`]*)`/g, '$1')
+      // bold / italics
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      // bullet markers normalize
+      .replace(/^\s*[-*+]\s+/gm, '- ')
+      // collapse extra blank lines
+      .replace(/\r?\n\r?\n+/g, '\n\n')
+      .trim();
+  };
+
+  const handleAIResponse = async (userMessage: string) => {
+    setIsTyping(true);
+    setError(null);
+
+    try {
+      const context = await fetchUserContext();
+
+      if (!context) {
+        throw new Error('Unable to connect to the task database. Please check if the backend server is running.');
+      }
+
+      const systemPrompt = buildSystemPrompt(context);
+
+      const aiResp = await fetch(`${API_BASE_URL}/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          reasoningEnabled: true,
+        }),
+      });
+
+      if (!aiResp.ok) {
+        const text = await aiResp.text();
+        throw new Error(text || 'AI request failed');
+      }
+
+      const data = await aiResp.json();
+      const rawResponse = data?.message?.content || 'Sorry, I couldnâ€™t generate a response.';
+      const aiResponse = stripSimpleMarkdown(rawResponse);
+
+      const taskCreationRequest = parseTaskCreationFromAI(aiResponse);
+
+      let createdTask = null;
+      if (taskCreationRequest) {
+        try {
+          createdTask = await createTask(taskCreationRequest);
+
+          const systemMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'system',
+            content: `âœ“ Task created: "${createdTask.title}"`,
+            timestamp: new Date(),
+            taskCreated: {
+              id: createdTask.id,
+              title: createdTask.title,
+            },
+          };
+          setMessages(prev => [...prev, systemMessage]);
+
+          if (onTaskCreated) {
+            onTaskCreated();
+          }
+        } catch (err) {
+          console.error('Failed to create task:', err);
+        }
+      }
+
+      const cleanedResponse = aiResponse.replace(/\{[^}]*"action":\s*"create_task"[^}]*\}/g, '').trim();
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        role: 'assistant',
+        content: cleanedResponse || aiResponse,
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (err) {
+      console.error('AI Response Error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error while processing your request. Please try again.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const buildSystemPrompt = (context: any) => {
+    const { tasks, categories, stats } = context;
+
+    let prompt = `You are Notton AI Assistant, a helpful task management assistant. You help users manage their tasks, prioritize work, and maintain productivity.
+
+Current User Context:
+- Total Tasks: ${stats.totalTasks}
+- Active Tasks: ${stats.activeTasks}
+- Completed Tasks: ${stats.completedTasks}
+- Tasks in Today's List: ${stats.todayTasks}
+
+Available Categories:`;
+
+    categories.forEach((cat: any) => {
+      prompt += `\n- ${cat.name} (ID: ${cat.id}): ${cat.activeTasks} active tasks${cat.description ? ' - ' + cat.description : ''}`;
+    });
+
+    prompt += `\n\nActive Tasks:`;
+
+    const activeTasks = tasks.filter((t: any) => !t.completed);
+    if (activeTasks.length === 0) {
+      prompt += '\n- No active tasks';
+    } else {
+      activeTasks.slice(0, 20).forEach((task: any) => {
+        const progress = task.inToday ? '(In Today)' : '';
+        prompt += `\n- "${task.title}" - ${task.durationMinutes} min, ${task.energyLevel} energy, Category: ${task.category.name} ${progress}`;
+      });
+    }
+
+    prompt += `\n\nCapabilities:
+- Help users manage and prioritize their tasks
+- Suggest tasks based on time available and energy level
+- **CREATE NEW TASKS** when users ask you to add, create, or make a new task
+- Provide specific task recommendations from their actual task list
+- Help prioritize work and maintain work-life balance
+
+TASK CREATION INSTRUCTIONS:
+When a user asks you to create a task (e.g., "add a task to...", "create a task for...", "remind me to..."), you MUST:
+1. Extract the task details from their request
+2. Choose the most appropriate category ID from the available categories above
+3. Estimate duration (15, 30, 60, or 120 minutes)
+4. Assess energy level (low, med, or high)
+5. Output a JSON object in this EXACT format:
+   {"action": "create_task", "title": "Task title", "categoryId": "uuid-here", "durationMinutes": 30, "energyLevel": "med", "addToToday": false}
+
+6. After the JSON, provide a friendly confirmation message to the user
+
+Example:
+User: "Add a task to review the quarterly report"
+Your response: {"action": "create_task", "title": "Review quarterly report", "categoryId": "${categories[0]?.id}", "durationMinutes": 60, "energyLevel": "high", "addToToday": false}
+
+I've added a task to review the quarterly report. It's set for 60 minutes with high energy required. Would you like me to add it to your Today list?
+
+IMPORTANT:
+- Always use valid category IDs from the list above
+- Duration must be exactly 15, 30, 60, or 120
+- Energy level must be exactly "low", "med", or "high"
+- Be conversational and friendly in your responses
+- When suggesting tasks, reference them by their actual titles
+- Consider the task's duration, energy level, and category when making recommendations`;
+
+    return prompt;
+  };
+
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (input.trim() && !isTyping) {
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
         content: input.trim(),
         timestamp: new Date(),
       };
-      
-      setMessages([...messages, userMessage]);
+
+      setMessages(prev => [...prev, userMessage]);
       setInput('');
-      setIsTyping(true);
-      
-      // Simulate AI response
-      setTimeout(() => {
-        const aiResponse = generateAIResponse(input.trim());
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: aiResponse,
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-        setIsTyping(false);
-      }, 1500);
+
+      await handleAIResponse(input.trim());
     }
   };
 
@@ -141,8 +325,10 @@ export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="text-slate-900 dark:text-slate-100">Notton AI Assistant</h3>
-              <p className="text-slate-500 dark:text-slate-400">Always here to help</p>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Notton AI Assistant</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Powered by OpenRouter (Nova 2 Lite) - Free tier, responses may be slower - Can create tasks
+              </p>
             </div>
           </div>
           <button
@@ -153,35 +339,53 @@ export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
           </button>
         </div>
 
+        {/* Error Banner */}
+        {error && (
+          <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+              <AlertCircle className="w-4 h-4" />
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
+        )}
+
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4 bg-white dark:bg-slate-900">
           {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              {message.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-teal-500 flex items-center justify-center shadow-sm flex-shrink-0">
-                  <Sparkles className="w-4 h-4 text-white" />
+            <div key={message.id}>
+              {message.role === 'system' ? (
+                <div className="flex items-center justify-center">
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-full px-4 py-2 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    <p className="text-sm text-green-700 dark:text-green-300">{message.content}</p>
+                  </div>
                 </div>
-              )}
-              <div
-                className={`max-w-[70%] rounded-2xl px-4 py-3 ${
-                  message.role === 'user'
-                    ? 'bg-teal-500 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{message.content}</p>
-              </div>
-              {message.role === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center shadow-sm flex-shrink-0">
-                  <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+              ) : (
+                <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {message.role === 'assistant' && (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-teal-500 flex items-center justify-center shadow-sm flex-shrink-0">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[70%] rounded-2xl px-4 py-3 ${
+                      message.role === 'user'
+                        ? 'bg-teal-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                  </div>
+                  {message.role === 'user' && (
+                    <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-700 flex items-center justify-center shadow-sm flex-shrink-0">
+                      <User className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           ))}
-          
+
           {isTyping && (
             <div className="flex gap-3 justify-start">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-teal-500 flex items-center justify-center shadow-sm flex-shrink-0">
@@ -196,13 +400,13 @@ export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
               </div>
             </div>
           )}
-          
+
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input */}
         <div className="border-t border-slate-200 dark:border-slate-700 px-6 py-4 bg-slate-50 dark:bg-slate-800">
-          <form onSubmit={handleSubmit} className="flex items-end gap-3">
+          <div className="flex items-end gap-3">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -212,21 +416,24 @@ export function ChatModal({ isOpen, onClose, initialMessage }: ChatModalProps) {
                   handleSubmit(e);
                 }
               }}
-              placeholder="Type your message..."
+              placeholder="Ask about tasks or say 'create a task to...'"
               rows={1}
               className="flex-1 px-4 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-slate-100 resize-none"
               style={{ maxHeight: '120px' }}
+              disabled={isTyping}
             />
-            <Button
-              type="submit"
+            <button
+              onClick={handleSubmit}
               disabled={!input.trim() || isTyping}
-              className="rounded-full w-12 h-12 p-0 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-300 dark:disabled:bg-slate-700 shadow-md hover:shadow-lg"
+              className="rounded-full w-12 h-12 p-0 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-300 dark:disabled:bg-slate-700 shadow-md hover:shadow-lg transition-all flex items-center justify-center disabled:cursor-not-allowed"
             >
               <Send className="w-5 h-5 text-white" />
-            </Button>
-          </form>
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+
