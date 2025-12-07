@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { X, Send, Sparkles, User, AlertCircle, CheckCircle, Plus } from 'lucide-react';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 interface Message {
   id: string;
@@ -17,7 +19,6 @@ interface ChatModalProps {
   onClose: () => void;
   initialMessage: string;
   userId: string;
-  apiKey?: string;
   onTaskCreated?: () => void; // Callback to refresh tasks in parent component
 }
 
@@ -29,7 +30,7 @@ interface TaskCreationRequest {
   addToToday?: boolean;
 }
 
-export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onTaskCreated }: ChatModalProps) {
+export function ChatModal({ isOpen, onClose, initialMessage, userId, onTaskCreated }: ChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -39,6 +40,14 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  useEffect(() => {
+    if (isOpen) {
+      setMessages([]);
+      setInput('');
+      setError(null);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && initialMessage && messages.length === 0) {
@@ -59,8 +68,7 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
 
   const fetchUserContext = async () => {
     try {
-      const backendUrl = 'http://localhost:4000';
-      const response = await fetch(`${backendUrl}/api/chat/context`);
+      const response = await fetch(`${API_BASE_URL}/api/chat/context`);
       if (!response.ok) throw new Error('Failed to fetch user context');
       return await response.json();
     } catch (err) {
@@ -71,8 +79,7 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
 
   const createTask = async (taskData: TaskCreationRequest) => {
     try {
-      const backendUrl = 'http://localhost:4000';
-      const response = await fetch(`${backendUrl}/tasks`, {
+      const response = await fetch(`${API_BASE_URL}/tasks`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -96,14 +103,12 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
   };
 
   const parseTaskCreationFromAI = (aiResponse: string, context: any): TaskCreationRequest | null => {
-    // Look for JSON task creation request in the AI response
     const jsonMatch = aiResponse.match(/\{[^}]*"action":\s*"create_task"[^}]*\}/);
     if (!jsonMatch) return null;
 
     try {
       const taskRequest = JSON.parse(jsonMatch[0]);
-      
-      // Validate required fields
+
       if (!taskRequest.title || !taskRequest.categoryId || !taskRequest.durationMinutes || !taskRequest.energyLevel) {
         return null;
       }
@@ -121,59 +126,69 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
     }
   };
 
+  const stripSimpleMarkdown = (text: string) => {
+    return text
+      // strip fenced code blocks (with or without language label)
+      .replace(/```[a-zA-Z0-9]*\s*([\s\S]*?)```/g, '$1')
+      // inline code
+      .replace(/`([^`]*)`/g, '$1')
+      // bold / italics
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      // bullet markers normalize
+      .replace(/^\s*[-*+]\s+/gm, '- ')
+      // collapse extra blank lines
+      .replace(/\r?\n\r?\n+/g, '\n\n')
+      .trim();
+  };
+
   const handleAIResponse = async (userMessage: string) => {
     setIsTyping(true);
     setError(null);
 
     try {
       const context = await fetchUserContext();
-      
+
       if (!context) {
         throw new Error('Unable to connect to the task database. Please check if the backend server is running.');
       }
 
       const systemPrompt = buildSystemPrompt(context);
-      
-      // const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent?key=${apiKey}`, {
+
+      const aiResp = await fetch(`${API_BASE_URL}/ai/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `${systemPrompt}\n\nUser Question: ${userMessage}`
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          }
-        })
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          reasoningEnabled: true,
+        }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || 'Gemini API request failed');
+      if (!aiResp.ok) {
+        const text = await aiResp.text();
+        throw new Error(text || 'AI request failed');
       }
 
-      const data = await response.json();
-      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I couldn\'t generate a response.';
+      const data = await aiResp.json();
+      const rawResponse = data?.message?.content || 'Sorry, I couldnâ€™t generate a response.';
+      const aiResponse = stripSimpleMarkdown(rawResponse);
 
-      // Check if AI wants to create a task
       const taskCreationRequest = parseTaskCreationFromAI(aiResponse, context);
-      
+
       let createdTask = null;
       if (taskCreationRequest) {
         try {
           createdTask = await createTask(taskCreationRequest);
-          
-          // Add system message about task creation
+
           const systemMessage: Message = {
             id: (Date.now() + 1).toString(),
             role: 'system',
-            content: `✓ Task created: "${createdTask.title}"`,
+            content: `âœ“ Task created: "${createdTask.title}"`,
             timestamp: new Date(),
             taskCreated: {
               id: createdTask.id,
@@ -182,7 +197,6 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
           };
           setMessages(prev => [...prev, systemMessage]);
 
-          // Notify parent component to refresh
           if (onTaskCreated) {
             onTaskCreated();
           }
@@ -191,7 +205,6 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
         }
       }
 
-      // Remove the JSON instruction from the response before displaying
       const cleanedResponse = aiResponse.replace(/\{[^}]*"action":\s*"create_task"[^}]*\}/g, '').trim();
 
       const assistantMessage: Message = {
@@ -200,12 +213,12 @@ export function ChatModal({ isOpen, onClose, initialMessage, userId, apiKey, onT
         content: cleanedResponse || aiResponse,
         timestamp: new Date(),
       };
-      
+
       setMessages(prev => [...prev, assistantMessage]);
     } catch (err) {
       console.error('AI Response Error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
-      
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -236,7 +249,7 @@ Available Categories:`;
     });
 
     prompt += `\n\nActive Tasks:`;
-    
+
     const activeTasks = tasks.filter((t: any) => !t.completed);
     if (activeTasks.length === 0) {
       prompt += '\n- No active tasks';
@@ -291,10 +304,10 @@ IMPORTANT:
         content: input.trim(),
         timestamp: new Date(),
       };
-      
+
       setMessages(prev => [...prev, userMessage]);
       setInput('');
-      
+
       await handleAIResponse(input.trim());
     }
   };
@@ -312,7 +325,9 @@ IMPORTANT:
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Notton AI Assistant</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Powered by Gemini • Can create tasks</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Powered by OpenRouter (Nova 2 Lite) - Free tier, responses may be slower - Can create tasks
+              </p>
             </div>
           </div>
           <button
@@ -369,7 +384,7 @@ IMPORTANT:
               )}
             </div>
           ))}
-          
+
           {isTyping && (
             <div className="flex gap-3 justify-start">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-teal-500 flex items-center justify-center shadow-sm flex-shrink-0">
@@ -384,7 +399,7 @@ IMPORTANT:
               </div>
             </div>
           )}
-          
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -419,3 +434,5 @@ IMPORTANT:
     </div>
   );
 }
+
+

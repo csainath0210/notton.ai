@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { PrismaClient, AuditAction, EnergyLevel, Source } from '@prisma/client';
+import { PrismaClient, AuditAction, EnergyLevel, Source, Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 dotenv.config();
@@ -21,6 +21,15 @@ app.use(express.json());
 const PORT = Number(process.env.PORT) || 4000;
 const DEFAULT_USER_EMAIL = process.env.DEFAULT_USER_EMAIL || 'demo@notton.ai';
 const SHOULD_SEED = process.env.SEED_ON_START !== 'false';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'amazon/nova-2-lite-v1:free';
+const MODEL_FALLBACKS = [
+  OPENROUTER_MODEL,
+  'google/gemini-2.0-flash-exp:free',
+  'meta-llama/llama-3.3-70b-instruct:free',
+  'mistralai/mistral-7b-instruct:free',
+].filter(Boolean);
 
 async function getUserId(): Promise<string> {
   const user = await prisma.user.findUnique({ where: { email: DEFAULT_USER_EMAIL } });
@@ -30,7 +39,12 @@ async function getUserId(): Promise<string> {
   return user.id;
 }
 
-async function logAudit(userId: string, action: AuditAction, taskId?: string, payload?: unknown) {
+async function logAudit(
+  userId: string,
+  action: AuditAction,
+  taskId?: string,
+  payload?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput
+) {
   await prisma.auditLog.create({
     data: { userId, taskId, action, payload },
   });
@@ -459,6 +473,75 @@ app.patch('/tasks/:id/archive', async (req, res) => {
     console.error(error);
     res.status(500).json({ error: 'Failed to archive task' });
   }
+});
+
+// AI proxy: OpenRouter (Amazon Nova 2 Lite)
+app.post('/ai/chat', async (req, res) => {
+  if (!OPENROUTER_API_KEY) {
+    return res.status(500).json({ error: 'OPENROUTER_API_KEY not configured' });
+  }
+
+  const schema = z.object({
+    messages: z.array(
+      z.object({
+        role: z.enum(['system', 'user', 'assistant']),
+        content: z.string(),
+        reasoning_details: z.any().optional(),
+      })
+    ),
+    model: z.string().optional(),
+    reasoningEnabled: z.boolean().optional(),
+    maxTokens: z.number().int().optional(),
+    temperature: z.number().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json(parsed.error);
+  }
+
+  const requestedModel = parsed.data.model;
+  const modelsToTry = requestedModel
+    ? [requestedModel, ...MODEL_FALLBACKS.filter((m) => m !== requestedModel)]
+    : MODEL_FALLBACKS;
+
+  let lastError: unknown;
+
+  for (const model of modelsToTry) {
+    try {
+      const resp = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          ...(process.env.OPENROUTER_REFERER ? { 'HTTP-Referer': process.env.OPENROUTER_REFERER } : {}),
+          ...(process.env.OPENROUTER_TITLE ? { 'X-Title': process.env.OPENROUTER_TITLE } : {}),
+        },
+        body: JSON.stringify({
+          model,
+          messages: parsed.data.messages,
+          reasoning: parsed.data.reasoningEnabled ? { enabled: true } : undefined,
+          max_output_tokens: parsed.data.maxTokens,
+          temperature: parsed.data.temperature,
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(`Model ${model} failed: ${resp.status} ${text}`);
+      }
+
+      const json = await resp.json();
+      const message = json?.choices?.[0]?.message || null;
+      return res.json({ message, raw: json, modelUsed: model });
+    } catch (error) {
+      lastError = error;
+      // Try next model in the fallback list
+    }
+  }
+
+  console.error('OpenRouter error', lastError);
+  res.status(502).json({ error: 'AI request failed for all fallback models', detail: String(lastError) });
 });
 
 // Auto-seed on startup if user doesn't exist or has no default categories
